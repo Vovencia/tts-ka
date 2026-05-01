@@ -33,6 +33,9 @@
 	flex-grow: 1;
 	flex-shrink: 1;
 }
+.progress {
+	margin-top: var(--spacer);
+}
 .controls {
 	display: flex;
 	flex-direction: row;

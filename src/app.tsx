@@ -68,6 +68,10 @@ const clearAppCache = (): void => {
 
 export function App() {
   const [, update] = useState(0);
+  const [progress, setProgress] = useState({
+    current: 0,
+    total: 0,
+  });
   const [token, setToken] = useState(Params.Get("token") ?? "");
 
   const $voicesRef = useRef<HTMLSelectElement>(null);
@@ -130,8 +134,19 @@ export function App() {
     const audio = new Audio(audioUrl);
 
     // Освобождаем память после завершения воспроизведения
-    audio.onended = () => update(Date.now());
-
+    audio.addEventListener('ended', () => {
+      update(Date.now());
+    });
+    audio.addEventListener('timeupdate', () => {
+      setProgress({
+        current: audio.currentTime,
+        total: audio.duration,
+      });
+    });
+    setProgress({
+      current: audio.currentTime,
+      total: audio.duration,
+    });
     audioRef.current = audio;
     isDownloading.current = false;
 
@@ -169,6 +184,8 @@ export function App() {
   const isButtonPlayDisabled = !audioRef.current || !audioRef.current.paused;
   const isButtonPauseDisabled = !audioRef.current || audioRef.current.paused;
   const isButtonDownloadDisabled = !blobRef.current;
+
+  const progressPercent = progress.total !== 0 ? progress.current * 100 / progress.total : 0;
 
   return (
     <div class={styles.app}>
@@ -209,6 +226,13 @@ export function App() {
         </div>
       </div>
       <div class={clsx("container", styles.container)}>
+        <div class={clsx("progress", styles.progress)}>
+          <div class="progress-bar" style={{
+            width: `${ progressPercent }%`,
+          }}>
+            { progress.current.toFixed(2) } / { progress.total.toFixed(2) }
+          </div>
+        </div>
         <div class={clsx(styles.content)}>
           <textarea ref={$instructionsRef} class={clsx("form-control", styles.instructions)}>Говори четко и размеренно.</textarea>
           <textarea ref={$textRef} class={clsx("form-control", styles.text)}>Приветствую вас! Я ваш виртуальный ассистент. Здесь, чтобы облегчить вашу задачу: задавайте вопрос, а я найду решение.</textarea>
