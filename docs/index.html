@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <link rel="manifest" href="./manifest.json">
@@ -10,7 +10,7 @@
       ;(async function (){
         if ('serviceWorker' in navigator) {
           try {
-            const registration = await navigator.serviceWorker.register('/sw.js');
+            const registration = await navigator.serviceWorker.register('./sw.js');
             console.log('SW registered:', registration.scope);
           } catch (error) {
             console.error('SW registration failed:', error);
@@ -19,8 +19,8 @@
         }
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index--A-wvpHj.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BuTtFx_O.css">
+    <script type="module" crossorigin src="./assets/index-CjeNKSTB.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-vrFFIqWS.css">
   </head>
   <body>
     <div id="app"></div>
