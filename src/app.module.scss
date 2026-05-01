@@ -40,6 +40,8 @@
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
+	justify-content: center;
+	align-items: center;
 	gap: var(--spacer);
 	padding-top: calc(var(--spacer) * 2);
 
@@ -48,10 +50,13 @@
 		flex-direction: row;
 		justify-content: flex-end;
 		gap: var(--spacer);
-		width: 100%;
-
-		&._left {
-			margin-left: auto;
-		}
+		width: auto;
+		flex-grow: 0;
+		flex-shrink: 0;
+	}
+}
+.control {
+	&._token {
+		width: 150px;
 	}
 }

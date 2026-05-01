@@ -192,17 +192,23 @@ export function App() {
       <nav class={clsx("navbar bg-primary", styles.header)} data-bs-theme="dark">
         <div class="container-fluid">
           <a class="navbar-brand" href="https://github.com/Vovencia/tts-ka" target="_blank">TTS-ka</a>
+          <div class={clsx(styles.controls__list, styles._top)}>
+            <div class={clsx(styles.control, styles._token)}>
+              <input type="password" class="form-control" placeholder="token" value={token} onChange={(ev) => setToken((ev.target as HTMLInputElement).value)} />
+            </div>
+            <div class={clsx(styles.control)}>
+              <button type="button" class="btn btn-danger" onClick={clearAppCache}><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
+          </div>
         </div>
       </nav>
       <div class={clsx("container", styles.controls)}>
-        <div class={clsx(styles.controls__list, styles._left)}>
+        <div class={clsx(styles.controls__list, styles._center)}>
           <div class={clsx(styles.control)}>
             <select ref={$voicesRef} class="form-select" aria-label="Default select example">
               { voices.map((voice) => (<option selected={ voice === Params.Get("voice") } value={voice}>{ voice }</option>)) }
             </select>
           </div>
-        </div>
-        <div class={clsx(styles.controls__list, styles._center)}>
           <div class={clsx(styles.control)}>
             <button type="button" class="btn btn-primary" disabled={isButtonEncodeDisabled} onClick={encodeCallback}>Озвучить</button>
           </div>
@@ -214,14 +220,6 @@ export function App() {
           </div>
           <div class={clsx(styles.control)}>
             <button type="button" class="btn btn-dark" disabled={isButtonDownloadDisabled} onClick={downloadCallback}><i class="bi bi-download"></i></button>
-          </div>
-        </div>
-        <div class={clsx(styles.controls__list, styles._left)}>
-          <div class={clsx(styles.control, styles._token)}>
-            <input type="password" class="form-control" placeholder="token" value={token} onChange={(ev) => setToken((ev.target as HTMLInputElement).value)} />
-          </div>
-          <div class={clsx(styles.control)}>
-            <button type="button" class="btn btn-danger" onClick={clearAppCache}><i class="bi bi-arrow-clockwise"></i></button>
           </div>
         </div>
       </div>
@@ -237,6 +235,7 @@ export function App() {
           <textarea ref={$instructionsRef} class={clsx("form-control", styles.instructions)}>Говори четко и размеренно.</textarea>
           <textarea ref={$textRef} class={clsx("form-control", styles.text)}>Приветствую вас! Я ваш виртуальный ассистент. Здесь, чтобы облегчить вашу задачу: задавайте вопрос, а я найду решение.</textarea>
         </div>
+        <div style={{textAlign: "right", color: "#000000", opacity: 0.3}}>proxied by <a href="https://proxyapi.ru/" target="_blank" style={{color: "#000000"}}>proxyapi.ru</a></div>
       </div>
     </div>
   );
