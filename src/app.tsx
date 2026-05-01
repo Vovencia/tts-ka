@@ -132,20 +132,20 @@ export function App() {
       });
     }, 333);
 
-    const response = await openai.current.audio.speech.create({
-        model: "gpt-4o-mini-tts",
-        voice,
-        input,
-        instructions,
-        // response_format: "wav",
-        response_format: FILE_FORMAT,
-        speed: 1.0,
-        stream_format: "audio",
-    });
-
     // 1. Получаем данные как Blob
     const blob = await (async () => {
       try {
+        const response = await openai.current!.audio.speech.create({
+            model: "gpt-4o-mini-tts",
+            voice,
+            input,
+            instructions,
+            // response_format: "wav",
+            response_format: FILE_FORMAT,
+            speed: 1.0,
+            stream_format: "audio",
+        });
+
         return await fetchBlobWithProgress(response, (data) => void setDownloadState({
           ...data,
           state: "downloading",
@@ -222,7 +222,12 @@ export function App() {
     update(Date.now());
   }, []);
 
-  const isButtonEncodeDisabled = isDownloading || !openai.current;
+  const MAX_TOKENS = 2000;
+  const currentTokens = Math.floor(($textRef.current?.value ?? "").length / 2.5);
+  const currentTokensProgress = Math.min(currentTokens * 100 / MAX_TOKENS, 100);
+  const currentTokensOverhead = currentTokens > MAX_TOKENS;
+
+  const isButtonEncodeDisabled = isDownloading || !openai.current || currentTokensOverhead;
   const isButtonPlayDisabled = !audioRef.current || !audioRef.current.paused;
   const isButtonPauseDisabled = !audioRef.current || audioRef.current.paused;
   const isButtonDownloadDisabled = !blobRef.current;
@@ -280,7 +285,12 @@ export function App() {
         </div>
         <div class={clsx(styles.content)}>
           <textarea ref={$instructionsRef} class={clsx("form-control", styles.instructions)}>Говори четко и размеренно.</textarea>
-          <textarea ref={$textRef} class={clsx("form-control", styles.text)}>Приветствую вас! Я ваш виртуальный ассистент. Здесь, чтобы облегчить вашу задачу: задавайте вопрос, а я найду решение.</textarea>
+          <div class="progress">
+            <div class={clsx("progress-bar", `text-bg-${ currentTokensOverhead ? 'danger' : 'info' }`)} style={{width: `${ currentTokensProgress }%`}}>
+              { currentTokens.toFixed(0) } / { MAX_TOKENS.toFixed(0) }
+            </div>
+          </div>
+          <textarea ref={$textRef} class={clsx("form-control", styles.text)} onInput={() => void update(Date.now())}>Приветствую вас! Я ваш виртуальный ассистент. Здесь, чтобы облегчить вашу задачу: задавайте вопрос, а я найду решение.</textarea>
         </div>
         <div style={{textAlign: "right", color: "#000000", opacity: 0.3}}>proxied by <a href="https://proxyapi.ru/" target="_blank" style={{color: "#000000"}}>proxyapi.ru</a></div>
       </div>
