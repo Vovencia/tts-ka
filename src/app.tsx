@@ -29,7 +29,9 @@ type IVoice = (
   | 'verse'
   | 'marin'
   | 'cedar'
-)
+);
+
+const FILE_FORMAT: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm' = "aac";
 
 // 2. Функция полного сброса кэша
 const clearAppCache = (): void => {
@@ -135,7 +137,9 @@ export function App() {
         voice,
         input,
         instructions,
-        response_format: "wav",
+        // response_format: "wav",
+        response_format: FILE_FORMAT,
+        speed: 1.0,
         stream_format: "audio",
     });
 
@@ -211,7 +215,9 @@ export function App() {
     if (!blobRef.current) {
       return;
     }
-    downloadBlob(blobRef.current, `${ $voicesRef.current!.value }.wav`);
+
+    const fileName = prompt("Введите название файла (или оставьте пустым)", $voicesRef.current!.value);
+    downloadBlob(blobRef.current, `${ fileName || $voicesRef.current!.value }.${ FILE_FORMAT }`);
 
     update(Date.now());
   }, []);
