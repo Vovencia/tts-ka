@@ -31,6 +31,41 @@ type IVoice = (
   | 'cedar'
 )
 
+// 2. Функция полного сброса кэша
+const clearAppCache = (): void => {
+  const result = confirm("Будет сброшен кэш и перезагружено приложение. Продолжить?");
+  if (!result) {
+    return;
+  }
+  void (async () => {
+    if (!('caches' in window)) return false;
+
+    try {
+      // Получаем все ключи кэша
+      const cacheNames = await caches.keys();
+      
+      // Удаляем каждый кэш
+      await Promise.all(
+        cacheNames.map(name => caches.delete(name))
+      );
+
+      // Опционально: отменяем регистрацию SW, чтобы он не пересоздал кэш сразу
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+
+      console.log('Cache and Service Worker cleared');
+
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to clear cache:', error);
+      alert('Failed to clear cache:' + error);
+    }
+  })();
+};
+
+
 export function App() {
   const [, update] = useState(0);
   const [token, setToken] = useState(Params.Get("token") ?? "");
@@ -101,6 +136,8 @@ export function App() {
     isDownloading.current = false;
 
     update(Date.now());
+
+    playCallback();
   }, []);
 
   const playCallback = useCallback(async () => {
@@ -141,27 +178,34 @@ export function App() {
         </div>
       </nav>
       <div class={clsx("container", styles.controls)}>
-        <div class={clsx(styles.controls__list)}>
-            <div class={clsx(styles.control)}>
-              <select ref={$voicesRef} class="form-select" aria-label="Default select example">
-                { voices.map((voice) => (<option selected={ voice === Params.Get("voice") } value={voice}>{ voice }</option>)) }
-              </select>
-            </div>
-            <div class={clsx(styles.control)}>
-              <button type="button" class="btn btn-primary" disabled={isButtonEncodeDisabled} onClick={encodeCallback}>Преобразовать</button>
-            </div>
-            <div class={clsx(styles.control)} onClick={playCallback}>
-              <button type="button" class="btn btn-success" disabled={isButtonPlayDisabled}><i class="bi bi-play-fill"></i></button>
-            </div>
-            <div class={clsx(styles.control)} onClick={pauseCallback}>
-              <button type="button" class="btn btn-secondary" disabled={isButtonPauseDisabled}><i class="bi bi-pause-fill"></i></button>
-            </div>
-            <div class={clsx(styles.control)}>
-              <button type="button" class="btn btn-dark" disabled={isButtonDownloadDisabled} onClick={downloadCallback}><i class="bi bi-download"></i></button>
-            </div>
-            <div class={clsx(styles.control, styles._token)}>
-              <input type="password" class="form-control" placeholder="token" value={token} onChange={(ev) => setToken((ev.target as HTMLInputElement).value)} />
-            </div>
+        <div class={clsx(styles.controls__list, styles._left)}>
+          <div class={clsx(styles.control)}>
+            <select ref={$voicesRef} class="form-select" aria-label="Default select example">
+              { voices.map((voice) => (<option selected={ voice === Params.Get("voice") } value={voice}>{ voice }</option>)) }
+            </select>
+          </div>
+        </div>
+        <div class={clsx(styles.controls__list, styles._center)}>
+          <div class={clsx(styles.control)}>
+            <button type="button" class="btn btn-primary" disabled={isButtonEncodeDisabled} onClick={encodeCallback}>Озвучить</button>
+          </div>
+          <div class={clsx(styles.control)} onClick={playCallback}>
+            <button type="button" class="btn btn-success" disabled={isButtonPlayDisabled}><i class="bi bi-play-fill"></i></button>
+          </div>
+          <div class={clsx(styles.control)} onClick={pauseCallback}>
+            <button type="button" class="btn btn-secondary" disabled={isButtonPauseDisabled}><i class="bi bi-pause-fill"></i></button>
+          </div>
+          <div class={clsx(styles.control)}>
+            <button type="button" class="btn btn-dark" disabled={isButtonDownloadDisabled} onClick={downloadCallback}><i class="bi bi-download"></i></button>
+          </div>
+        </div>
+        <div class={clsx(styles.controls__list, styles._left)}>
+          <div class={clsx(styles.control, styles._token)}>
+            <input type="password" class="form-control" placeholder="token" value={token} onChange={(ev) => setToken((ev.target as HTMLInputElement).value)} />
+          </div>
+          <div class={clsx(styles.control)}>
+            <button type="button" class="btn btn-danger" onClick={clearAppCache}><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
         </div>
       </div>
       <div class={clsx("container", styles.container)}>

@@ -12,7 +12,8 @@ export default defineConfig({
     preprocessorOptions: {
       scss: {
         silenceDeprecations: ['import', 'global-builtin', 'mixed-decls', 'color-functions', 'if-function'],
-        quietDeps: true // Игнорировать предупреждения в зависимостях (node_modules)
+        // Игнорировать предупреждения в зависимостях (node_modules)
+        quietDeps: true,
       },
     }
   }

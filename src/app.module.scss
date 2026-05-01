@@ -34,15 +34,21 @@
 	flex-shrink: 1;
 }
 .controls {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: var(--spacer);
+	padding-top: calc(var(--spacer) * 2);
+
 	&__list {
 		display: flex;
 		flex-direction: row;
+		justify-content: flex-end;
 		gap: var(--spacer);
-		padding: calc(var(--spacer) * 2) 0 0;
-	}
-}
-.control {
-	&._token {
-		margin-left: auto;
+		width: 100%;
+
+		&._left {
+			margin-left: auto;
+		}
 	}
 }
