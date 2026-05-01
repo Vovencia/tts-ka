@@ -3,6 +3,10 @@ import preact from '@preact/preset-vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: './', // Assets will be linked relative to index.html
+  build: {
+    outDir: "docs",
+  },
   plugins: [preact()],
   css: {
     preprocessorOptions: {
