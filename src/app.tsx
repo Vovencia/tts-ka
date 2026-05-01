@@ -191,7 +191,7 @@ export function App() {
     <div class={styles.app}>
       <nav class={clsx("navbar bg-primary", styles.header)} data-bs-theme="dark">
         <div class="container-fluid">
-          <a class="navbar-brand" href="/">TTS-ka</a>
+          <a class="navbar-brand" href="https://github.com/Vovencia/tts-ka" target="_blank">TTS-ka</a>
         </div>
       </nav>
       <div class={clsx("container", styles.controls)}>
