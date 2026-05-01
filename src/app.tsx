@@ -68,20 +68,28 @@ const clearAppCache = (): void => {
 
 export function App() {
   const [, update] = useState(0);
-  const [progress, setProgress] = useState({
+  const [playProgress, setPlayProgress] = useState({
     current: 0,
     total: 0,
   });
   const [token, setToken] = useState(Params.Get("token") ?? "");
+  const [downloadingState, setDownloadState] = useState({
+    receivedLength: 0,
+    contentLength: 0,
+    progress: 0,
+    state: "generating" as "downloading" | "generating",
+  });
 
   const $voicesRef = useRef<HTMLSelectElement>(null);
   const $textRef = useRef<HTMLTextAreaElement>(null);
   const $instructionsRef = useRef<HTMLTextAreaElement>(null);
 
   const openai = useRef<OpenAI | null>(null);
-  const isDownloading = useRef(false);
+  const downloadTime = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobRef = useRef<Blob | null>(null);
+
+  const isDownloading = downloadTime.current !== 0;
 
   useEffect(() => {
     if (!token) {
@@ -102,7 +110,7 @@ export function App() {
     }
     blobRef.current = null;
     audioRef.current = null;
-    isDownloading.current = true;
+    downloadTime.current = Date.now();
     update(Date.now());
 
     if (!openai.current) {
@@ -115,40 +123,68 @@ export function App() {
 
     Params.Set("voice", voice as IVoice);
 
+    const intervalDelayUpdater = setInterval(() => {
+      setDownloadState({
+        ...calcGeneratingProgress(downloadTime.current, input),
+        state: "generating",
+      });
+    }, 333);
+
     const response = await openai.current.audio.speech.create({
         model: "gpt-4o-mini-tts",
         voice,
         input,
         instructions,
         response_format: "wav",
+        stream_format: "audio",
     });
 
     // 1. Получаем данные как Blob
-    const blob = await response.blob();
+    const blob = await (async () => {
+      try {
+        return await fetchBlobWithProgress(response, (data) => void setDownloadState({
+          ...data,
+          state: "downloading",
+        }));
+      } catch (err) {
+        alert(err);
+        return null;
+      }
+    })();
+
+    clearInterval(intervalDelayUpdater);
     blobRef.current = blob;
 
-    // 2. Создаем URL для Blob
-    const audioUrl = URL.createObjectURL(blob);
+    if (blob) {
+      // 2. Создаем URL для Blob
+      const audioUrl = URL.createObjectURL(blob);
 
-    // 3. Создаем и запускаем аудио
-    const audio = new Audio(audioUrl);
+      // 3. Создаем и запускаем аудио
+      const audio = new Audio(audioUrl);
 
-    // Освобождаем память после завершения воспроизведения
-    audio.addEventListener('ended', () => {
-      update(Date.now());
-    });
-    audio.addEventListener('timeupdate', () => {
-      setProgress({
+      // Освобождаем память после завершения воспроизведения
+      audio.addEventListener('ended', () => {
+        update(Date.now());
+      });
+      audio.addEventListener('timeupdate', () => {
+        setPlayProgress({
+          current: audio.currentTime,
+          total: audio.duration,
+        });
+      });
+      setPlayProgress({
         current: audio.currentTime,
         total: audio.duration,
       });
-    });
-    setProgress({
-      current: audio.currentTime,
-      total: audio.duration,
-    });
-    audioRef.current = audio;
-    isDownloading.current = false;
+      audioRef.current = audio;
+    }
+    downloadTime.current = 0;
+    setDownloadState({
+      contentLength: 0,
+      progress: 0,
+      receivedLength: 0,
+      state: "generating",
+    })
 
     update(Date.now());
 
@@ -180,12 +216,17 @@ export function App() {
     update(Date.now());
   }, []);
 
-  const isButtonEncodeDisabled = isDownloading.current || !openai.current;
+  const isButtonEncodeDisabled = isDownloading || !openai.current;
   const isButtonPlayDisabled = !audioRef.current || !audioRef.current.paused;
   const isButtonPauseDisabled = !audioRef.current || audioRef.current.paused;
   const isButtonDownloadDisabled = !blobRef.current;
 
-  const progressPercent = progress.total !== 0 ? progress.current * 100 / progress.total : 0;
+  const progressValue = isDownloading ? downloadingState.receivedLength : playProgress.current;
+  const progressTotal = isDownloading ? downloadingState.contentLength : playProgress.total;
+
+  const progressPercent = progressValue * 100 / (progressTotal || 1);
+
+  const progressClass = isDownloading ? `progress-bar progress-bar-striped bg-${ downloadingState.state === "generating" ? "warning" : "success" }` : "progress-bar";
 
   return (
     <div class={styles.app}>
@@ -225,10 +266,10 @@ export function App() {
       </div>
       <div class={clsx("container", styles.container)}>
         <div class={clsx("progress", styles.progress)}>
-          <div class="progress-bar" style={{
+          <div class={ progressClass } style={{
             width: `${ progressPercent }%`,
           }}>
-            { progress.current.toFixed(2) } / { progress.total.toFixed(2) }
+            { progressValue.toFixed(2) } / { progressTotal.toFixed(2) }
           </div>
         </div>
         <div class={clsx(styles.content)}>
@@ -256,4 +297,68 @@ function downloadBlob(blob: Blob, fileName: string): void {
   // 4. Удаляем мусор
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+async function fetchBlobWithProgress(response: Response, callback: (state: {
+  receivedLength: number;
+  contentLength: number;
+  progress: number;
+}) => void): Promise<Blob> {
+  if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
+  if (!response.body) throw new Error('Тело ответа пустое');
+
+  const reader = response.body.getReader();
+  const contentLength = Number(response.headers.get('Content-Length')) || 0;
+
+  let receivedLength = 0;
+  const chunks: BlobPart[] = [];  // Массив для хранения частей данных
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (value == null) {
+      if (done) {
+        break;
+      }
+      continue;
+    }
+
+    chunks.push(value);
+    receivedLength += value.length;
+
+    const progress = (receivedLength / (contentLength || 1)) * 100;
+
+    callback({
+      receivedLength: receivedLength / (1024*1024),
+      contentLength: contentLength / (1024*1024),
+      progress,
+    });
+
+    if (done) {
+      break;
+    }
+  }
+
+  // Создаем итоговый Blob из всех накопленных частей
+  return new Blob(chunks);
+}
+
+function calcGeneratingProgress(startTime: number, text: string) {
+  /** tokens per sec */
+  const speed = 30;
+  /** средний размер токена: 2.5 русских симовлов */
+  const totalTokens = text.length / 2.5;
+
+  let generationTime = (Date.now() - startTime) / 1000;
+  const totalTime = totalTokens / speed;
+
+  if (generationTime > totalTime) {
+    generationTime = totalTime;
+  }
+
+  return {
+    receivedLength: generationTime,
+    contentLength: totalTime,
+    progress: generationTime / (totalTime || 1) * 100,
+  };
 }
