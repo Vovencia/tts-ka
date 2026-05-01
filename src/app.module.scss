@@ -42,14 +42,14 @@
 	flex-wrap: wrap;
 	justify-content: center;
 	align-items: center;
-	gap: var(--spacer);
+	gap: calc(var(--spacer) * 0.5);
 	padding-top: calc(var(--spacer) * 2);
 
 	&__list {
 		display: flex;
 		flex-direction: row;
 		justify-content: flex-end;
-		gap: var(--spacer);
+		gap: calc(var(--spacer) * 0.5);
 		width: auto;
 		flex-grow: 0;
 		flex-shrink: 0;

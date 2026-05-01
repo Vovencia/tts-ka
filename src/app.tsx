@@ -210,7 +210,7 @@ export function App() {
             </select>
           </div>
           <div class={clsx(styles.control)}>
-            <button type="button" class="btn btn-primary" disabled={isButtonEncodeDisabled} onClick={encodeCallback}>Озвучить</button>
+            <button type="button" class="btn btn-primary" disabled={isButtonEncodeDisabled} onClick={encodeCallback}>send</button>
           </div>
           <div class={clsx(styles.control)} onClick={playCallback}>
             <button type="button" class="btn btn-success" disabled={isButtonPlayDisabled}><i class="bi bi-play-fill"></i></button>
