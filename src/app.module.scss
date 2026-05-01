@@ -1,0 +1,48 @@
+.app {
+	display: flex;
+	flex-direction: column;
+	flex-grow: 1;
+	flex-shrink: 1;
+}
+.header {
+	flex-grow: 0;
+	flex-shrink: 0;
+}
+.container {
+	display: flex;
+	flex-direction: column;
+	flex-grow: 1;
+	flex-shrink: 1;
+}
+.content {
+	display: flex;
+	flex-direction: column;
+	flex-grow: 1;
+	flex-shrink: 1;
+	padding:  var(--spacer)0;
+}
+.instructions {
+	height: 70px;
+	resize: none;
+	margin-bottom: var(--spacer);
+}
+.text {
+	flex-grow: 1;
+	flex-shrink: 1;
+	resize: none;
+	flex-grow: 1;
+	flex-shrink: 1;
+}
+.controls {
+	&__list {
+		display: flex;
+		flex-direction: row;
+		gap: var(--spacer);
+		padding: calc(var(--spacer) * 2) 0 0;
+	}
+}
+.control {
+	&._token {
+		margin-left: auto;
+	}
+}
