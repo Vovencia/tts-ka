@@ -1,8 +1,10 @@
 import clsx from 'clsx';
-import styles from './app.module.scss';
-
+import encode from 'encode-audio';
 import OpenAI from "openai";
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+
+import styles from './app.module.scss';
+
 import { Params } from './Utils/Params';
 
 const voices = [
@@ -31,7 +33,13 @@ type IVoice = (
   | 'cedar'
 );
 
-const FILE_FORMAT: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm' = "aac";
+const FILE_FORMAT: 'mp3' | 'wav' | 'opus' | 'aac' | 'flac' | 'pcm' = "flac";
+const OUTPUT_FILE_FORMAT = "mp3" as const;
+
+const MAX_TOKENS = 2000;
+  /** средний размер токена: 2.5 русских символов */
+const TOKEN_SIZE = 2.5;
+const MAX_LENGTH = MAX_TOKENS * TOKEN_SIZE;
 
 // 2. Функция полного сброса кэша
 const clearAppCache = (): void => {
@@ -81,15 +89,19 @@ export function App() {
     progress: 0,
     state: "generating" as "downloading" | "generating",
   });
+  const [textMode, setTextMode] = useState<"input" | "chunks">("input");
+  const [text, setText] = useState("Приветствую вас! Я ваш виртуальный ассистент. Здесь, чтобы облегчить вашу задачу: задавайте вопрос, а я найду решение.");
 
   const $voicesRef = useRef<HTMLSelectElement>(null);
-  const $textRef = useRef<HTMLTextAreaElement>(null);
+  // const $textRef = useRef<HTMLTextAreaElement>(null);
   const $instructionsRef = useRef<HTMLTextAreaElement>(null);
 
   const openai = useRef<OpenAI | null>(null);
   const downloadTime = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobRef = useRef<Blob | null>(null);
+  const chunksRef = useRef<readonly string[]>([]);
+  chunksRef.current = splitText(text);
 
   const isDownloading = downloadTime.current !== 0;
 
@@ -119,15 +131,15 @@ export function App() {
       return;
     }
 
-    const input = $textRef.current!.value;
+    const chunks = chunksRef.current;
     const instructions = $instructionsRef.current!.value;
-    const voice = $voicesRef.current!.value;
+    const voice = $voicesRef.current!.value as IVoice;
 
-    Params.Set("voice", voice as IVoice);
+    Params.Set("voice", voice);
 
     const intervalDelayUpdater = setInterval(() => {
       setDownloadState({
-        ...calcGeneratingProgress(downloadTime.current, input),
+        ...calcGeneratingProgress(downloadTime.current, Math.max(...chunks.map(item => item.length))),
         state: "generating",
       });
     }, 333);
@@ -135,23 +147,29 @@ export function App() {
     // 1. Получаем данные как Blob
     const blob = await (async () => {
       try {
-        const response = await openai.current!.audio.speech.create({
-            model: "gpt-4o-mini-tts",
-            voice,
-            input,
-            instructions,
-            // response_format: "wav",
-            response_format: FILE_FORMAT,
-            speed: 1.0,
-            stream_format: "audio",
+        return await TTS(chunks, {
+          openai: openai.current!,
+          voice,
+          instructions,
         });
+        // const response = await openai.current!.audio.speech.create({
+        //     model: "gpt-4o-mini-tts",
+        //     voice,
+        //     input,
+        //     instructions,
+        //     // response_format: "wav",
+        //     response_format: FILE_FORMAT,
+        //     speed: 1.0,
+        //     stream_format: "audio",
+        // });
 
-        return await fetchBlobWithProgress(response, (data) => void setDownloadState({
-          ...data,
-          state: "downloading",
-        }));
+        // return await fetchBlobWithProgress(response, (data) => void setDownloadState({
+        //   ...data,
+        //   state: "downloading",
+        // }));
       } catch (err) {
-        alert(err);
+        alert(String(err));
+        console.error(err);
         return null;
       }
     })();
@@ -168,6 +186,24 @@ export function App() {
 
       // Освобождаем память после завершения воспроизведения
       audio.addEventListener('ended', () => {
+        update(Date.now());
+      });
+      // Освобождаем память после завершения воспроизведения
+      audio.addEventListener('pause', () => {
+        update(Date.now());
+      });
+      audio.addEventListener('play', () => {
+        update(Date.now());
+      });
+      audio.addEventListener('playing', () => {
+        update(Date.now());
+      });
+      audio.addEventListener('abort', () => {
+        update(Date.now());
+      });
+      audio.addEventListener('error', (err) => {
+        alert(String(err));
+        console.error(err);
         update(Date.now());
       });
       audio.addEventListener('timeupdate', () => {
@@ -217,13 +253,12 @@ export function App() {
     }
 
     const fileName = prompt("Введите название файла (или оставьте пустым)", $voicesRef.current!.value);
-    downloadBlob(blobRef.current, `${ fileName || $voicesRef.current!.value }.${ FILE_FORMAT }`);
+    downloadBlob(blobRef.current, `${ fileName || $voicesRef.current!.value }.${ OUTPUT_FILE_FORMAT }`);
 
     update(Date.now());
   }, []);
 
-  const MAX_TOKENS = 2000;
-  const currentTokens = Math.floor(($textRef.current?.value ?? "").length / 2.5);
+  const currentTokens = Math.floor(Math.max(...chunksRef.current.map(item => item.length)) / TOKEN_SIZE);
   const currentTokensProgress = Math.min(currentTokens * 100 / MAX_TOKENS, 100);
   const currentTokensOverhead = currentTokens > MAX_TOKENS;
 
@@ -238,6 +273,16 @@ export function App() {
   const progressPercent = progressValue * 100 / (progressTotal || 1);
 
   const progressClass = isDownloading ? `progress-bar progress-bar-striped bg-${ downloadingState.state === "generating" ? "warning" : "success" }` : "progress-bar";
+
+  const $chunks = chunksRef.current.map((chunk) => {
+    return (
+      <li class={clsx("list-group-item", {
+        "list-group-item-danger": chunk.length > MAX_LENGTH,
+      })}>
+        { chunk }
+      </li>
+    );
+  });
 
   return (
     <div class={styles.app}>
@@ -268,7 +313,7 @@ export function App() {
             <button type="button" class="btn btn-success" disabled={isButtonPlayDisabled}><i class="bi bi-play-fill"></i></button>
           </div>
           <div class={clsx(styles.control)} onClick={pauseCallback}>
-            <button type="button" class="btn btn-secondary" disabled={isButtonPauseDisabled}><i class="bi bi-pause-fill"></i></button>
+            <button type="button" class="btn btn-warning" disabled={isButtonPauseDisabled}><i class="bi bi-pause-fill"></i></button>
           </div>
           <div class={clsx(styles.control)}>
             <button type="button" class="btn btn-dark" disabled={isButtonDownloadDisabled} onClick={downloadCallback}><i class="bi bi-download"></i></button>
@@ -290,13 +335,93 @@ export function App() {
               { currentTokens.toFixed(0) } / { MAX_TOKENS.toFixed(0) }
             </div>
           </div>
-          <textarea ref={$textRef} class={clsx("form-control", styles.text)} onInput={() => void update(Date.now())}>Приветствую вас! Я ваш виртуальный ассистент. Здесь, чтобы облегчить вашу задачу: задавайте вопрос, а я найду решение.</textarea>
+          <div class={styles.text} data-text-mode={textMode}>
+            <ul class="nav nav-tabs">
+              <li class="nav-item">
+                <button type="button" class={clsx("nav-link", {active: textMode === "input"})} onClick={() => setTextMode("input")}>Оригинал</button>
+              </li>
+              <li class="nav-item">
+                <button type="button" class={clsx("nav-link", {active: textMode === "chunks"})} onClick={() => setTextMode("chunks")}>Дробление</button>
+              </li>
+            </ul>
+            <textarea
+              class={clsx("form-control", styles.textcontrol)}
+              onInput={(ev) => {
+                setText(ev.currentTarget.value);
+              }}
+            >{text}</textarea>
+            <ul class={clsx("list-group", styles.textchunks)}>
+              { $chunks }
+            </ul>
+          </div>
         </div>
         <div style={{textAlign: "right", color: "#000000", opacity: 0.3}}>proxied by <a href="https://proxyapi.ru/" target="_blank" style={{color: "#000000"}}>proxyapi.ru</a></div>
       </div>
     </div>
   );
 }
+
+async function TTS(input: readonly string[], params: {
+  openai: OpenAI;
+  voice: IVoice
+  instructions: string;
+}): Promise<Blob> {
+  const blobs = await Promise.all(input.map((item) => TTSSingle(item, params)));
+  /** 250ms */
+  // const silence = await getSilence();
+  const chunks = (await Promise.all(blobs.map(item => item.arrayBuffer()))).reduce<ArrayBuffer[]>((result, buffer, index) => {
+    if (index === 0) {
+      return [
+        ...result,
+        buffer,
+      ];
+    }
+    return [
+      ...result,
+      // silence,
+      buffer,
+    ];
+  }, []);
+
+  const audioBuffer = await joinAudioChunks(chunks, 500);
+  // const blob = audioBufferToWav(audioBuffer);
+  const blob = await ENCODERS[OUTPUT_FILE_FORMAT](audioBuffer);
+
+  return blob;
+}
+
+async function TTSSingle(input: string, {
+  openai,
+  voice,
+  instructions,
+}: {
+  openai: OpenAI;
+  voice: IVoice
+  instructions: string;
+}): Promise<Blob> {
+  // 1. Получаем данные как Blob
+  return await (async () => {
+    try {
+      const response = await openai.audio.speech.create({
+          model: "gpt-4o-mini-tts",
+          voice,
+          input: `.\t    \t ${ input } \t    \t.`,
+          instructions,
+          // response_format: "wav",
+          response_format: FILE_FORMAT,
+          speed: 1.0,
+          stream_format: "audio",
+      });
+
+      return await response.blob();
+    } catch (err) {
+      alert(String(err));
+      console.error(err);
+      throw err;
+    }
+  })();
+}
+
 function downloadBlob(blob: Blob, fileName: string): void {
   // 1. Создаем временную ссылку на Blob в памяти
   const url = URL.createObjectURL(blob);
@@ -315,55 +440,160 @@ function downloadBlob(blob: Blob, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-async function fetchBlobWithProgress(response: Response, callback: (state: {
-  receivedLength: number;
-  contentLength: number;
-  progress: number;
-}) => void): Promise<Blob> {
-  if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
-  if (!response.body) throw new Error('Тело ответа пустое');
+async function joinAudioChunks(arrayBuffers: readonly ArrayBuffer[], pauseDurationMS = 300): Promise<AudioBuffer> {
+  const audioCtx = new (window.AudioContext || (window as {webkitAudioContext?: typeof AudioContext}).webkitAudioContext)();
+  
+  // 1. Декодируем все чанки параллельно
+  const audioBuffers = await Promise.all(
+    arrayBuffers.map(buffer => audioCtx.decodeAudioData(buffer))
+  );
 
-  const reader = response.body.getReader();
-  const contentLength = Number(response.headers.get('Content-Length')) || 0;
+  // 2. Рассчитываем параметры (берем параметры первого чанка)
+  const sampleRate = audioBuffers[0].sampleRate;
+  const numChannels = audioBuffers[0].numberOfChannels;
+  const pauseSamples = (pauseDurationMS / 1000) * sampleRate;
+  
+  // Общая длина = сумма длин чанков + паузы между ними
+  const totalLength = audioBuffers.reduce((acc, buf) => acc + buf.length, 0) + (pauseSamples * (audioBuffers.length - 1));
 
-  let receivedLength = 0;
-  const chunks: BlobPart[] = [];  // Массив для хранения частей данных
+  // 3. Создаем итоговый буфер
+  const finalBuffer = audioCtx.createBuffer(numChannels, totalLength, sampleRate);
 
-  while (true) {
-    const { done, value } = await reader.read();
-
-    if (value == null) {
-      if (done) {
-        break;
-      }
-      continue;
+  // 4. Копируем данные
+  let currentOffset = 0;
+  audioBuffers.forEach((buffer, index) => {
+    for (let channel = 0; channel < numChannels; channel++) {
+      finalBuffer.getChannelData(channel).set(buffer.getChannelData(channel), currentOffset);
     }
+    currentOffset += buffer.length + (index < audioBuffers.length - 1 ? pauseSamples : 0);
+  });
 
-    chunks.push(value);
-    receivedLength += value.length;
-
-    const progress = (receivedLength / (contentLength || 1)) * 100;
-
-    callback({
-      receivedLength: receivedLength / (1024*1024),
-      contentLength: contentLength / (1024*1024),
-      progress,
-    });
-
-    if (done) {
-      break;
-    }
-  }
-
-  // Создаем итоговый Blob из всех накопленных частей
-  return new Blob(chunks);
+  return finalBuffer; // Далее используем bufferToWave (код из предыдущего ответа)
 }
 
-function calcGeneratingProgress(startTime: number, text: string) {
+const ENCODERS = {
+  mp3: async function audioBufferToMP3(buffer: AudioBuffer): Promise<Blob> {
+    const flac = await encode.mp3(buffer, {
+      sampleRate: buffer.sampleRate,
+      channels: 1,
+      bitDepth: 16,
+      compression: 8,
+      bitrate: 256,
+      quality: 3,
+    });
+
+    return new Blob([flac as unknown as ArrayBuffer], {type: "audio/mp3"})
+  },
+  flac: async function audioBufferToFlac(buffer: AudioBuffer): Promise<Blob> {
+    const flac = await encode.flac(buffer, {
+      sampleRate: buffer.sampleRate,
+      channels: 1,
+      bitDepth: 16,
+      compression: 8,
+      bitrate: 256,
+      quality: 3,
+    });
+
+    return new Blob([flac as unknown as ArrayBuffer], {type: "audio/flac"})
+  },
+  wav: async function audioBufferToWav(buffer: AudioBuffer): Promise<Blob> {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    
+    // Плоская структура данных (interleaved)
+    const length = buffer.length * numChannels * bytesPerSample + 44;
+    const arrayBuffer = new ArrayBuffer(length);
+    const view = new DataView(arrayBuffer);
+    
+    /* Пишем заголовки RIFF */
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, length - 8, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(36, 'data');
+    view.setUint32(40, length - 44, true);
+
+    // Пишем аудио данные
+    let offset = 44;
+    for (let i = 0; i < buffer.length; i++) {
+      for (let channel = 0; channel < numChannels; channel++) {
+        let sample = buffer.getChannelData(channel)[i];
+        // Ограничиваем амплитуду и переводим в 16-бит
+        sample = Math.max(-1, Math.min(1, sample));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  }
+} as const;
+
+
+// async function fetchBlobWithProgress(response: Response, callback: (state: {
+//   receivedLength: number;
+//   contentLength: number;
+//   progress: number;
+// }) => void): Promise<Blob> {
+//   if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
+//   if (!response.body) throw new Error('Тело ответа пустое');
+
+//   const reader = response.body.getReader();
+//   const contentLength = Number(response.headers.get('Content-Length')) || 0;
+
+//   let receivedLength = 0;
+//   const chunks: BlobPart[] = [];  // Массив для хранения частей данных
+
+//   while (true) {
+//     const { done, value } = await reader.read();
+
+//     if (value == null) {
+//       if (done) {
+//         break;
+//       }
+//       continue;
+//     }
+
+//     chunks.push(value);
+//     receivedLength += value.length;
+
+//     const progress = (receivedLength / (contentLength || 1)) * 100;
+
+//     callback({
+//       receivedLength: receivedLength / (1024*1024),
+//       contentLength: contentLength / (1024*1024),
+//       progress,
+//     });
+
+//     if (done) {
+//       break;
+//     }
+//   }
+
+//   // Создаем итоговый Blob из всех накопленных частей
+//   return new Blob(chunks);
+// }
+
+function calcGeneratingProgress(startTime: number, textLength: number) {
   /** tokens per sec */
   const speed = 30;
-  /** средний размер токена: 2.5 русских симовлов */
-  const totalTokens = text.length / 2.5;
+  const totalTokens = textLength / TOKEN_SIZE;
 
   let generationTime = (Date.now() - startTime) / 1000;
   const totalTime = totalTokens / speed;
@@ -378,3 +608,55 @@ function calcGeneratingProgress(startTime: number, text: string) {
     progress: generationTime / (totalTime || 1) * 100,
   };
 }
+
+function splitText(text: string, {
+  maxTokens = MAX_TOKENS,
+  tokenSize = TOKEN_SIZE,
+}: {
+  maxTokens?: number;
+  tokenSize?: number;
+} = {}): readonly string[] {
+  text = text.trim();
+
+  const chunks = text.split(/^---$/).reduce<readonly string[]>((result, chunk) => {
+    return [
+      ...result,
+      ...chunk.split(/\n\n+/),
+    ];
+  }, []);
+
+  return chunks.reduce<readonly string[]>((result, chunk) => {
+    if (chunk.length / tokenSize < maxTokens) {
+      return [
+        ...result,
+        chunk,
+      ];
+    }
+
+    return [
+      ...result,
+      ...chunk.split("\n"),
+    ];
+  }, []).reduce<readonly string[]>((result, chunk) => {
+    if (chunk.length / tokenSize < maxTokens) {
+      return [
+        ...result,
+        chunk,
+      ];
+    }
+
+    return [
+      ...result,
+      ...chunk.split(". "),
+    ];
+  }, []).filter((item) => !!item.trim());
+}
+
+// let _silence: Promise<ArrayBuffer> | null = null;
+// async function getSilence(): Promise<ArrayBuffer> {
+//   /** from https://github.com/anars/blank-audio */
+//   if (!_silence) {
+//     _silence = fetch("./250ms-silence.mp3").then((resp) => resp.arrayBuffer());
+//   }
+//   return _silence;
+// }

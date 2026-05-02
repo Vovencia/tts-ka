@@ -22,17 +22,47 @@
 	padding:  var(--spacer)0;
 }
 .instructions {
-	height: 70px;
+	flex-grow: 0;
+	flex-shrink: 0;
+	// font-size * line-height * count-rows + border-width * 2
+	height: calc(1rem * 1.5 * 1 + var(--mo-border-width) * 2);
 	resize: none;
 	margin-bottom: var(--spacer);
 }
 .text {
-	flex-grow: 1;
-	flex-shrink: 1;
-	resize: none;
+	display: flex;
+	flex-direction: column;
 	flex-grow: 1;
 	flex-shrink: 1;
 	margin-top: var(--spacer);
+
+	&[data-text-mode="input"] {
+		.textchunks {
+			display: none;
+		}
+	}
+
+	&[data-text-mode="chunks"] {
+		.textcontrol {
+			display: none;
+		}
+	}
+}
+.textcontrol {
+	flex-grow: 1;
+	flex-shrink: 1;
+	resize: none;
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+	border-top: 0;
+}
+.textchunks {
+	flex-grow: 1;
+	flex-shrink: 1;
+	resize: none;
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+	border-top: 0;
 }
 .progress {
 	margin-top: var(--spacer);
@@ -45,6 +75,10 @@
 	align-items: center;
 	gap: calc(var(--spacer) * 0.5);
 	padding-top: calc(var(--spacer) * 2);
+
+	:global(.btn):disabled {
+		opacity: 0.2;
+	}
 
 	&__list {
 		display: flex;
