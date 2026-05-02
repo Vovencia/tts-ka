@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import encode from 'encode-audio';
 import OpenAI from "openai";
+import pLimit from 'p-limit';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
 import styles from './app.module.scss';
@@ -40,6 +41,7 @@ const MAX_TOKENS = 2000;
   /** средний размер токена: 2.5 русских символов */
 const TOKEN_SIZE = 2.5;
 const MAX_LENGTH = MAX_TOKENS * TOKEN_SIZE;
+const LIMIT_REQUESTS = 8;
 
 // 2. Функция полного сброса кэша
 const clearAppCache = (): void => {
@@ -139,7 +141,11 @@ export function App() {
 
     const intervalDelayUpdater = setInterval(() => {
       setDownloadState({
-        ...calcGeneratingProgress(downloadTime.current, Math.max(...chunks.map(item => item.length))),
+        ...calcGeneratingProgress(
+          downloadTime.current,
+          Math.max(...chunks.map(item => item.length)),
+          chunks.length / LIMIT_REQUESTS,
+        ),
         state: "generating",
       });
     }, 333);
@@ -338,10 +344,14 @@ export function App() {
           <div class={styles.text} data-text-mode={textMode}>
             <ul class="nav nav-tabs">
               <li class="nav-item">
-                <button type="button" class={clsx("nav-link", {active: textMode === "input"})} onClick={() => setTextMode("input")}>Оригинал</button>
+                <button type="button" class={clsx("nav-link", {active: textMode === "input"})} onClick={() => setTextMode("input")}>
+                  Оригинал
+                </button>
               </li>
               <li class="nav-item">
-                <button type="button" class={clsx("nav-link", {active: textMode === "chunks"})} onClick={() => setTextMode("chunks")}>Дробление</button>
+                <button type="button" class={clsx("nav-link", {active: textMode === "chunks"})} onClick={() => setTextMode("chunks")}>
+                  Части ({ $chunks.length })
+                </button>
               </li>
             </ul>
             <textarea
@@ -366,7 +376,12 @@ async function TTS(input: readonly string[], params: {
   voice: IVoice
   instructions: string;
 }): Promise<Blob> {
-  const blobs = await Promise.all(input.map((item) => TTSSingle(item, params)));
+  // Устанавливаем лимит в 10 потоков
+  const limit = pLimit(LIMIT_REQUESTS);
+
+  const blobs = await Promise.all(input.map(((item) => {
+    return limit(() => TTSSingle(item, params));
+  })));
   /** 250ms */
   // const silence = await getSilence();
   const chunks = (await Promise.all(blobs.map(item => item.arrayBuffer()))).reduce<ArrayBuffer[]>((result, buffer, index) => {
@@ -439,7 +454,6 @@ function downloadBlob(blob: Blob, fileName: string): void {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-
 async function joinAudioChunks(arrayBuffers: readonly ArrayBuffer[], pauseDurationMS = 300): Promise<AudioBuffer> {
   const audioCtx = new (window.AudioContext || (window as {webkitAudioContext?: typeof AudioContext}).webkitAudioContext)();
   
@@ -545,55 +559,10 @@ const ENCODERS = {
   }
 } as const;
 
-
-// async function fetchBlobWithProgress(response: Response, callback: (state: {
-//   receivedLength: number;
-//   contentLength: number;
-//   progress: number;
-// }) => void): Promise<Blob> {
-//   if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
-//   if (!response.body) throw new Error('Тело ответа пустое');
-
-//   const reader = response.body.getReader();
-//   const contentLength = Number(response.headers.get('Content-Length')) || 0;
-
-//   let receivedLength = 0;
-//   const chunks: BlobPart[] = [];  // Массив для хранения частей данных
-
-//   while (true) {
-//     const { done, value } = await reader.read();
-
-//     if (value == null) {
-//       if (done) {
-//         break;
-//       }
-//       continue;
-//     }
-
-//     chunks.push(value);
-//     receivedLength += value.length;
-
-//     const progress = (receivedLength / (contentLength || 1)) * 100;
-
-//     callback({
-//       receivedLength: receivedLength / (1024*1024),
-//       contentLength: contentLength / (1024*1024),
-//       progress,
-//     });
-
-//     if (done) {
-//       break;
-//     }
-//   }
-
-//   // Создаем итоговый Blob из всех накопленных частей
-//   return new Blob(chunks);
-// }
-
-function calcGeneratingProgress(startTime: number, textLength: number) {
+function calcGeneratingProgress(startTime: number, textLength: number, countGroup: number) {
   /** tokens per sec */
   const speed = 30;
-  const totalTokens = textLength / TOKEN_SIZE;
+  const totalTokens = (textLength / TOKEN_SIZE) * countGroup;
 
   let generationTime = (Date.now() - startTime) / 1000;
   const totalTime = totalTokens / speed;
@@ -651,12 +620,3 @@ function splitText(text: string, {
     ];
   }, []).filter((item) => !!item.trim());
 }
-
-// let _silence: Promise<ArrayBuffer> | null = null;
-// async function getSilence(): Promise<ArrayBuffer> {
-//   /** from https://github.com/anars/blank-audio */
-//   if (!_silence) {
-//     _silence = fetch("./250ms-silence.mp3").then((resp) => resp.arrayBuffer());
-//   }
-//   return _silence;
-// }
